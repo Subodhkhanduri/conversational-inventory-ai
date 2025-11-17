@@ -1,72 +1,88 @@
-import pandas as pd
 import matplotlib.pyplot as plt
-import io
 import base64
+import io
+import pandas as pd
 
-def plot_bar_chart(data: pd.DataFrame, x_col: str, y_col: str, title: str, xlabel: str, ylabel: str):
-    """
-    Generates a bar chart and returns it as a base64 encoded string.
-    """
-    plt.figure(figsize=(10, 6))
-    plt.bar(data[x_col], data[y_col])
-    plt.title(title)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    
-    # Save plot to a bytes buffer
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png')
-    buf.seek(0)
-    
-    # Encode buffer to base64 string
-    img_str = base64.b64encode(buf.getvalue()).decode('utf-8')
-    plt.close()
-    
-    return img_str
 
-def plot_line_chart(data: pd.DataFrame, x_col: str, y_col: str, title: str, xlabel: str, ylabel: str):
+class VisualizationTool:
     """
-    Generates a line chart and returns it as a base64 encoded string.
+    Handles all chart creation + Base64 encoding for frontend display.
     """
-    plt.figure(figsize=(12, 6))
-    plt.plot(data[x_col], data[y_col], marker='o')
-    plt.title(title)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.grid(True)
-    plt.tight_layout()
 
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png')
-    buf.seek(0)
-    
-    img_str = base64.b64encode(buf.getvalue()).decode('utf-8')
-    plt.close()
+    def __init__(self):
+        pass
 
-    return img_str
+    # ----------------------------------------------------------
+    # Convert Matplotlib figure → Base64 PNG
+    # ----------------------------------------------------------
+    def fig_to_base64(self, fig):
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format="png", bbox_inches="tight")
+        buffer.seek(0)
+        encoded = base64.b64encode(buffer.read()).decode("utf-8")
+        plt.close(fig)
+        return encoded
 
-def plot_forecast_chart(dates, sales_data, title):
-    """
-    Generates a line chart specifically for forecast data.
-    """
-    plt.figure(figsize=(10, 6))
-    plt.plot(dates, sales_data, marker='o', linestyle='-', color='b')
-    plt.title(title)
-    plt.xlabel("Date")
-    plt.ylabel("Predicted Sales")
-    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
+    # ----------------------------------------------------------
+    # Plot forecasted demand
+    # ----------------------------------------------------------
+    def plot_forecast(self, df: pd.DataFrame):
+        """
+        df should contain:
+        - 'date'
+        - 'forecast'
+        """
+
+        fig, ax = plt.subplots(figsize=(8, 4))
+
+        ax.plot(df["date"], df["forecast"], marker="o")
+        ax.set_title("Forecasted Demand")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Predicted Units")
+
+        fig.tight_layout()
+
+        return self.fig_to_base64(fig)
+
+    # ----------------------------------------------------------
+    # Plot historical + forecast together
+    # ----------------------------------------------------------
+    def plot_history_and_forecast(self, df_history, df_forecast):
+        """
+        df_history must have date + sales
+        df_forecast must have date + forecast
+        """
+
+        fig, ax = plt.subplots(figsize=(9, 4))
+
+        # Plot historical sales
+        ax.plot(df_history["date"], df_history["sales"], label="Historical", marker=".")
+
+        # Plot forecast
+        ax.plot(df_forecast["date"], df_forecast["forecast"], label="Forecast", marker="o")
+
+        ax.set_title("Historical vs Forecasted Demand")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Units")
+
+        ax.legend()
+        fig.tight_layout()
+
+        return self.fig_to_base64(fig)
     
-    # Save plot to a bytes buffer
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png')
-    buf.seek(0)
-    
-    # Encode buffer to base64 string
-    img_str = base64.b64encode(buf.getvalue()).decode('utf-8')
-    plt.close()
-    
-    return img_str
+    def generate_sales_trend_plot(self, df):
+        fig, ax = plt.subplots(figsize=(10, 5))
+
+        # Example: item-level daily sales trend
+        daily = df.groupby("Date")["Daily_Sales"].sum()
+
+        ax.plot(daily.index, daily.values)
+        ax.set_title("Daily Sales Trend")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Sales")
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.getvalue()

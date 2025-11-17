@@ -1,48 +1,35 @@
+# inventory_chatbot/analytics/core_analytics.py
+
 import pandas as pd
+from typing import Dict
+from fastapi import UploadFile
 
-def summarize_data(df: pd.DataFrame, column: str):
-    """
-    Generates descriptive statistics for a specific numerical column in the DataFrame.
-    """
-    if column not in df.columns or not pd.api.types.is_numeric_dtype(df[column]):
-        return None
-    
-    summary = {
-        "mean": df[column].mean(),
-        "median": df[column].median(),
-        "std_dev": df[column].std(),
-        "min": df[column].min(),
-        "max": df[column].max(),
-        "total": df[column].sum()
-    }
-    return summary
+SESSION_DATASETS: Dict[str, pd.DataFrame] = {}
 
-def filter_below_threshold(df: pd.DataFrame, level_col: str, threshold_col: str):
-    """
-    Filters the DataFrame to find rows where the level is below the threshold.
-    [cite_start]This directly corresponds to queries like "Which products are below reorder threshold?"[cite: 461].
-    """
-    if level_col not in df.columns or threshold_col not in df.columns:
-        return pd.DataFrame() # Return empty DataFrame if columns are missing
-    
-    low_stock_items = df[df[level_col] < df[threshold_col]]
-    return low_stock_items
+def load_dataset_for_session(file: UploadFile, session_id: str) -> pd.DataFrame:
+    print("\n--- UPLOAD DEBUG ---")
+    print("session_id received on UPLOAD:", session_id)
 
-def get_top_n_items(df: pd.DataFrame, column: str, n: int = 5, ascending: bool = False):
-    """
-    Gets the top N items from the DataFrame based on a specific column.
-    """
-    if column not in df.columns:
-        return pd.DataFrame()
-        
-    return df.sort_values(by=column, ascending=ascending).head(n)
+    df = pd.read_csv(file.file)
+    SESSION_DATASETS[session_id] = df
 
-def aggregate_by_category(df: pd.DataFrame, category_col: str, value_col: str, agg_func: str = 'sum'):
-    """
-    Groups data by a category and applies an aggregation function (e.g., sum, mean).
-    [cite_start]Useful for queries like "What is the total stock per warehouse?"[cite: 471].
-    """
-    if category_col not in df.columns or value_col not in df.columns:
-        return None
-        
-    return df.groupby(category_col)[value_col].agg(agg_func).reset_index()
+    print("Stored session IDs now:", list(SESSION_DATASETS.keys()))
+    print("----------------------\n")
+
+    return df
+
+
+def get_session_dataframe(session_id: str) -> pd.DataFrame | None:
+    print("\n--- ASK DEBUG ---")
+    print("session_id received on ASK:", session_id)
+    print("Available session IDs:", list(SESSION_DATASETS.keys()))
+
+    df = SESSION_DATASETS.get(session_id)
+
+    if df is None:
+        print("❌ NO dataset found for this session!")
+    else:
+        print("✅ Dataset FOUND for session.")
+
+    print("----------------------\n")
+    return df
