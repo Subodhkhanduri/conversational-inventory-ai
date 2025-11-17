@@ -1,104 +1,146 @@
 import streamlit as st
 import requests
-import time
-import json
-import base64 # Import base64
+import uuid
+import base64
 
-# --- Configuration ---
+# --------------------------
+# BACKEND URL
+# --------------------------
 BACKEND_URL = "http://127.0.0.1:8000/api/v1"
 
-# --- UI Setup ---
+# --------------------------
+# PAGE CONFIG
+# --------------------------
 st.set_page_config(page_title="Inventory AI Assistant", layout="wide")
 st.title("🤖 Inventory Management AI Assistant")
 st.caption("Upload your inventory CSV and ask questions in natural language.")
 
-# --- Session State Initialization ---
+# --------------------------
+# SESSION STATE
+# --------------------------
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "session_id" not in st.session_state:
-    st.session_state.session_id = None
 
-# --- Sidebar for File Upload ---
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+
+session_id = st.session_state.session_id
+
+
+# ================================
+# SIDEBAR — FILE UPLOAD
+# ================================
 with st.sidebar:
+
     st.header("Upload Your Data")
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
 
     if uploaded_file is not None:
-        with st.spinner('Processing file...'):
+        with st.spinner("Uploading and processing file..."):
+
             try:
-                files = {'file': (uploaded_file.name, uploaded_file.getvalue(), 'text/csv')}
-                response = requests.post(f"{BACKEND_URL}/upload", files=files)
-                
+                response = requests.post(
+                    f"{BACKEND_URL}/upload",
+                    data={"session_id": session_id},
+                    files={"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")},
+                )
+
                 if response.status_code == 200:
-                    data = response.json()
-                    st.session_state.session_id = data.get("session_id")
-                    st.success(f"File '{uploaded_file.name}' uploaded successfully!")
-                    st.info(f"Columns found: {', '.join(data.get('columns', []))}")
-                    # Clear chat history on new file upload
+                    info = response.json()
+
+                    st.success("File uploaded successfully!")
+                    st.info("Columns: " + ", ".join(info["columns"]))
+
+                    # Reset chat history for new dataset
                     st.session_state.messages = []
+
                 else:
-                    st.error(f"Error: {response.status_code} - {response.text}")
-            except requests.exceptions.RequestException as e:
-                st.error(f"Connection error: Could not connect to the backend at {BACKEND_URL}.")
+                    st.error(f"Upload Error {response.status_code}: {response.text}")
+
+            except Exception as e:
+                st.error(f"❌ Backend connection error: {e}")
 
 
-# --- Main Chat Interface ---
-if not st.session_state.session_id:
+# ================================
+# MAIN CHAT INTERFACE
+# ================================
+if uploaded_file is None:
     st.info("Please upload a CSV file in the sidebar to begin.")
 else:
-    # --- MODIFIED: Display chat messages from history (now includes images) ---
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            # Check if there's an image and display it
-            if message.get("image"):
-                st.image(base64.b64decode(message["image"]), caption="Forecast Visualization")
 
-    # Accept user input
-    if prompt := st.chat_input("Ask a question about your inventory..."):
+    # Render previous messages
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
+            if msg.get("image"):
+                st.image(base64.b64decode(msg["image"]), caption="Visualization")
+
+
+    # ========= USER INPUT =========
+    if prompt := st.chat_input("Ask a question about your inventory…"):
+
+        # Display user message
         st.session_state.messages.append({"role": "user", "content": prompt})
+
         with st.chat_message("user"):
-            st.markdown(prompt)
+            st.write(prompt)
 
-        # --- MODIFIED: Streaming logic to handle text and images ---
+        # Placeholder for assistant
         with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            full_response = ""
-            chart_b64 = None  # Variable to hold our chart
-            
-            try:
-                payload = {
-                    "session_id": st.session_state.session_id,
-                    "messages": st.session_state.messages
-                }
-                
-                with requests.post(f"{BACKEND_URL}/ask", json=payload, stream=True) as r:
-                    r.raise_for_status()
-                    for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
-                        # Check if the chunk is our JSON data
-                        if chunk.startswith('{"chart_b64":'):
-                            try:
-                                chart_data = json.loads(chunk)
-                                chart_b64 = chart_data.get("chart_b64")
-                            except json.JSONDecodeError:
-                                # Not valid JSON, treat it as text
-                                full_response += chunk
-                        else:
-                            full_response += chunk
-                        
-                        # Update text as it streams
-                        message_placeholder.markdown(full_response + "▌")
-                
-                # Display final text
-                message_placeholder.markdown(full_response)
-                
-                # If we received a chart, display it
-                if chart_b64:
-                    st.image(base64.b64decode(chart_b64), caption="Forecast Visualization")
-            
-            except requests.exceptions.RequestException as e:
-                full_response = f"Error communicating with backend: {e}"
-                message_placeholder.error(full_response)
+            placeholder = st.empty()
+            placeholder.write("Thinking...")
 
-            # --- MODIFIED: Add assistant response (and image!) to chat history ---
-            st.session_state.messages.append({"role": "assistant", "content": full_response, "image": chart_b64})
+            try:
+                # ---------- SEND TO BACKEND ----------
+                response = requests.post(
+                    f"{BACKEND_URL}/ask",
+                    data={"query": prompt, "session_id": session_id},
+                )
+
+                if response.status_code != 200:
+                    placeholder.error(f"❌ Error {response.status_code}: {response.text}")
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": f"Error: {response.text}"
+                    })
+                    st.stop()
+
+                data = response.json()
+
+                # -------------------------------
+                # HANDLE TEXT RESPONSE
+                # -------------------------------
+                ai_response = data.get("response", "")
+
+                if ai_response:
+                    placeholder.write(ai_response)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": ai_response
+                    })
+
+                # -------------------------------
+                # HANDLE CHART RESPONSE
+                # -------------------------------
+                chart_b64 = data.get("chart_b64", None)
+
+                if chart_b64:
+                    st.image(base64.b64decode(chart_b64), caption="Visualization")
+
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": "",
+                        "image": chart_b64
+                    })
+
+                # If backend returned nothing
+                if not ai_response and not chart_b64:
+                    placeholder.error("❌ No usable response received from API.")
+
+            except Exception as e:
+                error_msg = f"❌ Backend communication failed: {e}"
+                placeholder.error(error_msg)
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": error_msg
+                })
