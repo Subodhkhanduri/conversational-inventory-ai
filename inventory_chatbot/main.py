@@ -1,16 +1,31 @@
+# inventory_chatbot/main.py
+
 from fastapi import FastAPI
-from .api import endpoints
-from .config import settings
+from fastapi.middleware.cors import CORSMiddleware
+from inventory_chatbot.api.endpoints import router  
+from inventory_chatbot.config import settings
 
-app = FastAPI(
-    title="Conversational AI for Inventory Management API",
-    description="Backend for the Streamlit Inventory Chatbot.",
-    version="1.0.0"
-)
 
-# Include the API router
-app.include_router(endpoints.router, prefix="/api/v1")
+def create_app():
+    """Create and configure FastAPI app."""
+    app = FastAPI(
+        title=settings.API_TITLE,
+        version=settings.API_VERSION
+    )
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the Inventory Chatbot Backend!"}
+    # CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Register API routes
+    app.include_router(router, prefix=settings.API_PREFIX)
+
+    return app
+
+
+app = create_app()
