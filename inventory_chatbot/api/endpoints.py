@@ -1,5 +1,3 @@
-# inventory_chatbot/api/endpoints.py
-
 from fastapi import APIRouter, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse
 import base64
@@ -124,3 +122,4 @@ User question:
     response_text = llm.chat(context_prompt)
 
     return {"response": response_text}
+
